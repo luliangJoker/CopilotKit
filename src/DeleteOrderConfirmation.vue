@@ -5,7 +5,7 @@ const props = defineProps<{
   args: { orderId?: string }
   status: string
   respond?: (result: unknown) => Promise<void>
-  deleteOrder: (orderId: string) => boolean
+  deleteOrder: (orderId: string) => Promise<boolean>
 }>()
 
 // --------------------------- 用户确认 ---------------------------
@@ -18,7 +18,7 @@ const message = ref('')
 async function confirmDelete() {
   if (answered.value || !props.respond || props.status !== 'executing') return
   answered.value = true
-  const deleted = props.deleteOrder(props.args.orderId!)
+  const deleted = await props.deleteOrder(props.args.orderId!)
   message.value = deleted ? '订单已删除' : '订单不存在，未删除'
   await props.respond({ confirmed: true, deleted, orderId: props.args.orderId })
 }
@@ -37,7 +37,7 @@ async function cancelDelete() {
     <p v-if="status === 'in-progress'">正在准备确认信息……</p>
     <template v-else-if="status === 'executing' && !answered">
       <p>确认删除模拟订单 {{ args.orderId }}？</p>
-      <p>删除仅影响当前页面，刷新后恢复模拟数据。</p>
+      <p>仅删除本地模拟数据，重启后端后恢复。</p>
       <button type="button" @click="cancelDelete">取消</button>
       <button type="button" class="danger" @click="confirmDelete">确认删除</button>
     </template>

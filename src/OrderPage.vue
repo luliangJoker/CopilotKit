@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, h } from 'vue'
+import { onMounted, ref, h } from 'vue'
 import { CopilotChat, useFrontendTool, useAgentContext, useHumanInTheLoop } from '@copilotkit/vue/v2'
 import type { VueHumanInTheLoopRenderProps } from '@copilotkit/vue/v2'
 import { z } from 'zod'
@@ -15,28 +15,40 @@ interface Order {
   status: OrderStatus
 }
 
-// 订单数据：当前使用本地模拟数据。
-const orders = ref<Order[]>([
-  { id: 'ORD001', customer: '张三', amount: 199, status: '待付款' },
-  { id: 'ORD002', customer: '李四', amount: 329, status: '待发货' },
-  { id: 'ORD003', customer: '王五', amount: 89, status: '已完成' },
-  { id: 'ORD004', customer: '赵六', amount: 259, status: '待发货' },
-])
+// 页面只保存业务接口返回的列表。
+const orders = ref<Order[]>([])
+const loading = ref(false)
+const queryError = ref('')
 
 // 筛选状态：只保存用户当前选择的条件。
 const filterOptions: OrderFilter[] = ['全部', '待付款', '待发货', '已完成']
 const currentStatus = ref<OrderFilter>('全部')
 
-// 展示列表：条件变化时自动重新计算，保留原始订单。
-const filteredOrders = computed(() => {
-  if (currentStatus.value === '全部') return orders.value
-  return orders.value.filter((order) => order.status === currentStatus.value)
-})
+// --------------------------- 订单查询 ---------------------------
 
-// 普通业务函数：按钮和 AI 共用同一个筛选入口。
-function filterOrders(status: OrderFilter) {
-  currentStatus.value = status
+// 按钮与 AI 共用查询，接口成功后再更新页面。
+async function filterOrders(status: OrderFilter) {
+  if (loading.value) throw new Error('订单查询中，请稍后重试')
+  loading.value = true
+  queryError.value = ''
+  try {
+    const response = await fetch(`/api/orders?${new URLSearchParams({ status })}`)
+    if (!response.ok) throw new Error(`订单查询失败：HTTP ${response.status}`)
+    orders.value = await response.json()
+    currentStatus.value = status
+    return { applied: true, status, count: orders.value.length }
+  } catch (error) {
+    queryError.value = '订单查询失败，请检查业务接口后重新筛选。'
+    throw error
+  } finally {
+    loading.value = false
+  }
 }
+
+// 首次进入页面时查询全部订单。
+onMounted(async () => {
+  await filterOrders('全部')
+})
 
 // --------------------------- 页面状态共享 ---------------------------
 
@@ -45,7 +57,8 @@ useAgentContext({
   description: '订单页面当前的筛选状态和显示条数。用户只询问当前状态时，直接据此回答，不要调用筛选工具改变页面。',
   value: () => ({
     status: currentStatus.value,
-    count: filteredOrders.value.length,
+    count: orders.value.length,
+    loading: loading.value,
   }),
 })
 
@@ -59,19 +72,19 @@ useFrontendTool({
     status: z.enum(['全部', '待付款', '待发货', '已完成']),
   }),
   handler: async ({ status }) => {
-    filterOrders(status)
-    return { applied: true, status, count: filteredOrders.value.length }
+    return await filterOrders(status)
   },
 })
 
 // --------------------------- 删除订单确认 ---------------------------
 
-// 删除本地模拟订单，返回是否找到并删除。
-function deleteOrder(orderId: string) {
-  const index = orders.value.findIndex((order) => order.id === orderId)
-  if (index === -1) return false
-  orders.value.splice(index, 1)
-  return true
+// 保持删除确认功能：调用模拟业务接口后重新查询列表。
+async function deleteOrder(orderId: string) {
+  const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(`删除失败：HTTP ${response.status}`)
+  const result: { deleted: boolean } = await response.json()
+  await filterOrders(currentStatus.value)
+  return result.deleted
 }
 
 // 先显示确认界面，等待用户点击后才返回执行结果。
@@ -96,13 +109,16 @@ useHumanInTheLoop({
         <button
           v-for="status in filterOptions"
           :key="status"
+          :disabled="loading"
           :aria-pressed="currentStatus === status"
           @click="filterOrders(status)"
         >
           {{ status }}
         </button>
       </div>
-      <p>当前筛选：{{ currentStatus }}，显示 {{ filteredOrders.length }} 条订单</p>
+      <p v-if="loading" role="status">正在查询订单……</p>
+      <p v-if="queryError" role="alert">{{ queryError }}</p>
+      <p>当前筛选：{{ currentStatus }}，显示 {{ orders.length }} 条订单</p>
       <table>
         <thead>
           <tr>
@@ -113,7 +129,7 @@ useHumanInTheLoop({
           </tr>
         </thead>
         <tbody>
-          <tr v-for="order in filteredOrders" :key="order.id">
+          <tr v-for="order in orders" :key="order.id">
             <td>{{ order.id }}</td>
             <td>{{ order.customer }}</td>
             <td>¥{{ order.amount }}</td>
