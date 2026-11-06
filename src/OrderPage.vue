@@ -21,6 +21,11 @@ const orders = ref<Order[]>([])
 const loading = ref(false)
 const queryError = ref('')
 
+// --------------------------- 模拟工具权限 ---------------------------
+
+// 演示 AI 工具开关，手动查询按钮仍可使用。
+const canQuery = ref(true)
+
 // 筛选状态：只保存用户当前选择的条件。
 const filterOptions: OrderFilter[] = ['全部', '待付款', '待发货', '已完成']
 const currentStatus = ref<OrderFilter>('全部')
@@ -55,11 +60,13 @@ onMounted(async () => {
 
 // 向 AI 提供最新的筛选条件和显示条数。
 useAgentContext({
-  description: '订单页面当前的筛选状态和显示条数。用户只询问当前状态时，直接据此回答，不要调用筛选工具改变页面。',
+  description: '订单页面当前状态：status 是筛选条件，count 是显示条数，loading 表示是否正在查询，canQuery 表示是否允许 AI 使用订单查询工具。用户询问当前状态时，直接据此回答，不要调用筛选工具改变页面。',
   value: () => ({
     status: currentStatus.value,
     count: orders.value.length,
+    // 告诉 AI 订单列表是否正在查询：true 查询中，false 当前没有查询。
     loading: loading.value,
+    canQuery: canQuery.value,
   }),
 })
 
@@ -74,6 +81,9 @@ useFrontendTool({
   }),
   handler: async ({ status }) => {
     return await filterOrders(status)
+  },
+  get available() {
+    return canQuery.value
   },
   render: (props: VueToolCallRendererRenderProps<{ status: OrderFilter }>) =>
     h(OrderQueryResult, props),
@@ -143,6 +153,11 @@ useHumanInTheLoop({
     </section>
 
     <h2>AI 聊天</h2>
+    <label>
+      <input v-model="canQuery" type="checkbox">
+      允许 AI 调用订单查询工具
+    </label>
+    <p>AI 查询工具：{{ canQuery ? '可用' : '不可用，手动筛选仍可使用' }}</p>
     <div class="chat-panel">
       <CopilotChat />
     </div>
