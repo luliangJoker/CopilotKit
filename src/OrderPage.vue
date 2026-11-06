@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref, h } from 'vue'
 import { CopilotChat, useFrontendTool, useAgentContext, useHumanInTheLoop } from '@copilotkit/vue/v2'
-import type { VueHumanInTheLoopRenderProps } from '@copilotkit/vue/v2'
+import type { VueHumanInTheLoopRenderProps, VueToolCallRendererRenderProps } from '@copilotkit/vue/v2'
 import { z } from 'zod'
 import DeleteOrderConfirmation from './DeleteOrderConfirmation.vue'
+import OrderQueryResult from './OrderQueryResult.vue'
 
 type OrderStatus = '待付款' | '待发货' | '已完成'
 type OrderFilter = '全部' | OrderStatus
@@ -74,6 +75,8 @@ useFrontendTool({
   handler: async ({ status }) => {
     return await filterOrders(status)
   },
+  render: (props: VueToolCallRendererRenderProps<{ status: OrderFilter }>) =>
+    h(OrderQueryResult, props),
 })
 
 // --------------------------- 删除订单确认 ---------------------------

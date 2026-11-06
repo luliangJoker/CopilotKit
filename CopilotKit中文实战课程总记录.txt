@@ -1,0 +1,511 @@
+CopilotKit Vue 实战课程总结
+更新日期：2026-11-06
+
+用途：按课程复习核心知识，重点理解 CopilotKit 的职责、接入方式和数据流。
+基于本项目的 Vue v2 API；示例以当前学习用途为主，不是完整生产方案。
+
+============================================================
+第 1 课：整体结构与职责
+============================================================
+
+核心知识
+- Vue 负责页面、数据和业务函数。
+- 大模型负责理解自然语言、选择工具并生成回答。
+- CopilotKit 提供聊天组件，并把模型的工具请求连接到前端函数。
+- Copilot Runtime 是前端连接的服务端协调层，模型凭据保存在服务端。
+
+请求链路
+Vue 聊天框 → CopilotKit 后端 → 模型服务 → 返回回答。
+AI 请求操作 → CopilotKit 执行前端工具 → Vue 页面更新。
+
+重要区别
+- 接入聊天框，不等于 AI 自动获得页面数据和操作能力。
+- 配置 prompt 只是在交代身份、要求，不会自动实现业务功能。
+- AI 说“已完成”不能代替实际执行验证。
+
+============================================================
+第 2 课：安装 SDK 与显示聊天框
+============================================================
+
+安装
+npm install @copilotkit/vue zod
+已有项目沿用原包管理器和锁文件，不重复安装、不来回混用。
+
+main.ts 引入样式
+import '@copilotkit/vue/styles.css'
+
+App.vue 中配置连接
+import { CopilotKitProvider } from '@copilotkit/vue/v2'
+import OrderPage from './OrderPage.vue'
+
+<CopilotKitProvider runtime-url="http://127.0.0.1:8200/api/copilotkit">
+  <OrderPage />
+</CopilotKitProvider>
+
+OrderPage.vue 中引入并使用聊天框
+import { CopilotChat } from '@copilotkit/vue/v2'
+
+<div style="height: 600px">
+  <CopilotChat />
+</div>
+
+核心知识
+- SDK 在这里指 @copilotkit/vue 开发包。
+- npm 包发布版本与 /v2 API 入口是两种版本概念。
+- CopilotChat 是官方封装的聊天界面，不需要修改内部源码。
+- runtime-url 填 CopilotKit 后端地址，不填模型平台或普通订单接口地址。
+
+============================================================
+第 3 课：组件范围与前后端配置
+============================================================
+
+核心知识
+- CopilotKitProvider 向内部组件提供连接配置等共享内容。
+- 调用 useFrontendTool、useAgentContext 等方法的组件需要处于其内部。
+- 可以包整个页面，也可以包局部；可以使用已有业务组件。
+- 普通表格和按钮放进去，不代表 AI 自动看到了这些内容。
+
+组件结构
+App.vue
+  CopilotKitProvider
+    OrderPage.vue
+      订单表格
+      工具与页面数据登记
+      CopilotChat
+
+易混淆点
+在 App.vue 模板中写 CopilotKitProvider，不能反过来给 App.vue 自己的 setup 提供它的配置。
+因此把工具登记写在内部的 OrderPage.vue 中。
+
+前后端配置区别
+runtime-url：前端找 CopilotKit 后端。
+OPENAI_BASE_URL：本项目后端找模型兼容服务。
+OPENAI_API_KEY：本项目后端使用的凭据。
+AI_MODEL：要调用的模型名称。
+
+.env.local 保存本机真实配置，Git 忽略；.env.example 是空密钥模板。
+已有可用 CopilotKit 后端时，前端无需另外编写 server.ts。
+
+============================================================
+第 4 课：模型身份、工具说明与真实能力
+============================================================
+
+核心知识
+- prompt 提前告诉模型身份和回答要求。
+- 工具名称、description 和参数规则会在调用前提供给模型，帮助它决定用哪个工具。
+- 普通问候通常只生成回答，不执行工具。
+- 模型生成的是文字，不是按“你好”触发代码里固定的欢迎语。
+
+信息来源
+“我是订单助手” → prompt。
+“可以按状态筛选” → 已登记工具的说明和参数。
+“当前显示 2 条” → 页面共享数据或工具实际返回结果。
+
+重要区别
+能介绍一个业务场景，不等于能执行其中的所有动作。
+应只向模型声明已接入的能力，并根据实际结果确认是否成功。
+
+============================================================
+第 5 课：useFrontendTool 登记业务动作
+============================================================
+
+引入
+import { useFrontendTool } from '@copilotkit/vue/v2'
+import { z } from 'zod'
+
+结构示例
+useFrontendTool({
+  name: 'filter_orders',
+  description: '按状态查询并更新页面订单列表。',
+  parameters: z.object({
+    status: z.enum(['全部', '待付款', '待发货', '已完成']),
+  }),
+  handler: async ({ status }) => {
+    return await filterOrders(status)
+  },
+})
+
+配置项
+name：工具名称。
+description：告诉模型何时、为何使用工具，不是精确关键词匹配。
+parameters：描述工具需要的参数结构。
+handler：真正执行的浏览器代码。
+handler 的返回值：交回模型的实际执行结果。
+
+调用过程
+用户说“只看待发货”
+→ 模型提供 { status: '待发货' }
+→ CopilotKit 执行 handler
+→ 调用现有 filterOrders
+→ 页面更新
+→ 模型根据返回结果回复。
+
+重要区别
+模型请求调用函数；模型没有直接进入 Vue 项目执行源码。
+按钮可直接调用同一个业务函数，不经过 AI 和 handler。
+配置项名称由 SDK 规定，工具名、说明、业务参数和返回字段由开发者设计。
+
+============================================================
+第 6 课：Zod、参数规则与实际数据
+============================================================
+
+核心代码
+parameters: z.object({
+  status: z.enum(['全部', '待付款', '待发货', '已完成']),
+})
+
+核心知识
+- z 从 zod 包导入，与数据库没有直接关系。
+- z.object 描述对象格式。
+- z.enum 描述允许的值。
+- .describe() 可为参数添加解释文字。
+
+必须分清
+parameters 的值：Zod 规则对象。
+本次实际参数：例如 { status: '待付款' }。
+render 收到的 args：承载本次实际工具参数。
+
+不能说“args 就是 parameters 的值”。
+准确关系是：规则描述参数 → 模型参考规则提供实际参数 → CopilotKit 传递实际参数。
+
+运行时检查与类型说明
+Zod schema.parse(data)：检查实际数据，不符合规则就抛错。
+JSON.parse(text)：把 JSON 字符串解析为 JavaScript 值。
+TypeScript 类型：检查代码、提供提示，不检查运行时实际数据。
+
+本项目当前的工具参数沿用官网简洁写法，没有额外调用 Zod parse。
+声明 parameters 不代表模型实际传来的参数必定正确或已经通过运行时校验。
+
+============================================================
+第 7 课：对象解构与状态联动
+============================================================
+
+对象取值
+假设 args = { status: '待发货' }，以下三种写法含义相同：
+
+const status = args.status
+const { status: status } = args
+const { status } = args
+
+重命名
+const { status: nextStatus } = args
+相当于 const nextStatus = args.status。
+
+函数参数位置解构
+handler: async ({ status }) => { ... }
+表示直接从本次调用参数中取出 status。
+这是 JavaScript 语法，不是 Vue 专属语法。
+
+状态联动
+按钮和 AI 共用 filterOrders，并修改同一个 currentStatus。
+按钮通过 :aria-pressed="currentStatus === status" 标记选中，CSS 设置样式。
+页面变化来自 Vue 响应式更新，不是 AI 模拟点击了按钮。
+
+============================================================
+第 8 课：useAgentContext 提供页面事实
+============================================================
+
+引入
+import { useAgentContext } from '@copilotkit/vue/v2'
+
+代码示例
+useAgentContext({
+  description: '订单页面当前筛选状态和显示条数。',
+  value: () => ({
+    status: currentStatus.value,
+    count: orders.value.length,
+    loading: loading.value,
+  }),
+})
+
+核心知识
+description 解释数据含义，value 提供所需关键数据。
+() => ({ ... }) 是返回对象的函数，CopilotKit 跟踪其读取的响应式值。
+状态变化后登记信息更新，后续聊天请求携带最新数据。
+不意味着每次点击按钮都自动发起一次模型聊天。
+
+能力边界
+只提供筛选和数量，模型就没有完整订单明细。
+需要分析哪些数据，再明确提供哪些数据；避免发送不必要的敏感内容。
+
+验证方法
+手动切换按钮，再问“当前是什么状态，显示几条？”，问题里不透露答案。
+再切换一次并询问，验证模型依据最新数据回答。
+
+============================================================
+第 9 课：useHumanInTheLoop 等待用户确认
+============================================================
+
+核心知识
+- 使用 useHumanInTheLoop 登记需要用户选择的工具。
+- 用 render 显示确认组件；不编写自定义 handler。
+- CopilotKit 在等待选择的执行阶段提供 respond 方法。
+- 点击确认才调用删除函数；取消不执行删除。
+- respond 将处理结果交回 AI，使等待结束；它本身不会删除订单。
+
+本项目接法
+render: (props: VueHumanInTheLoopRenderProps<{ orderId: string }>) =>
+  h(DeleteOrderConfirmation, { ...props, deleteOrder }),
+
+含义
+...props：将 CopilotKit 提供的参数、阶段、respond 等传给组件。
+deleteOrder：额外传入页面自己的业务函数。
+
+流程
+请求删除 → 显示目标订单和确认按钮 → 用户选择
+确认 → 删除 → 回传实际结果。
+取消 → 保留订单 → 回传取消结果。
+
+重要区别
+删除代码放在确认按钮的处理函数中，不能只靠提示词要求模型先确认。
+真实业务权限和删除前提仍需可信后端保障。
+同一次确认避免重复处理；不存在的订单不能声称删除成功。
+
+============================================================
+第 10 课：工具调用异步业务接口
+============================================================
+
+核心知识
+handler 可以执行已有业务请求，等待结果后再交回模型。
+这不是新的 CopilotKit API，而是把工具接到真实请求流程上。
+
+当前查询关键代码
+const response = await fetch(`/api/orders?${new URLSearchParams({ status })}`)
+if (!response.ok) throw new Error(`订单查询失败：HTTP ${response.status}`)
+orders.value = await response.json()
+currentStatus.value = status
+return { applied: true, status, count: orders.value.length }
+
+工具中等待结果
+handler: async ({ status }) => {
+  return await filterOrders(status)
+},
+
+需要掌握
+- 聊天请求与业务接口请求是两条不同职责的链路。
+- 查询成功后更新列表，不使用旧数量冒充成功结果。
+- 请求失败需要如实反馈，不吞错后声称成功。
+- 按钮和 AI 可以复用同一个异步业务函数。
+
+本项目当前数据边界
+GET /api/orders：按状态查询后端内存中的模拟订单。
+DELETE /api/orders/:id：删除后端内存订单。
+Vite 将 /api/orders 转发到本地 8200 服务。
+仍然是模拟业务后端，不是数据库或生产系统。
+
+历史写法与当前写法
+早期：前端四条数组 + computed 筛选；删除后刷新恢复。
+当前：后端内存数据 + HTTP 查询；删除后重启后端才恢复。
+因此旧代码中的 filteredOrders 已不代表当前接口实现。
+
+============================================================
+第 11 课：render 自定义工具结果展示
+============================================================
+
+核心知识
+handler 负责执行，render 负责展示执行信息。
+工具结果可以显示成自己的 Vue 组件，不必只靠模型文字描述。
+
+引入组件
+import OrderQueryResult from './OrderQueryResult.vue'
+
+官网示例的形式
+render: OrderQueryResult
+
+本项目使用的形式
+render: (props: VueToolCallRendererRenderProps<{ status: OrderFilter }>) =>
+  h(OrderQueryResult, props),
+
+原因
+当前项目直接传组件的类型检查不兼容，因此采用函数形式转交参数。
+这属于本地类型适配，不是所有项目都必须写 h。
+
+结果组件根据工具阶段显示：准备中 → 查询中 → 查询完成。
+handler 返回对象后，传给结果组件的 result 是字符串，本例使用 JSON.parse(result) 读取字段。
+
+注意
+结果组件根据本次工具返回值展示，不能把页面当前值当作历史调用结果。
+增加 render 不会替代 handler，也不等于查询逻辑自动实现。
+
+============================================================
+第 12 课：h()、props 和完整工具信息
+============================================================
+
+h 是 Vue 的函数，不是 TypeScript 新语法。
+import { h } from 'vue'
+
+h(标签或组件, 属性, 子内容)
+h('p', null, '你好') 对应理解为 <p>你好</p>。
+h(OrderQueryResult, props) 创建组件的虚拟节点描述，并把 props 传给组件。
+OrderQueryResult 是组件，h 才是函数。
+
+props 的来源
+CopilotKit 内部根据工具调用提供信息 → render 接收 → h 转给组件 → defineProps 接收。
+不是结果组件决定 CopilotKit 传入对象的外层结构。
+props 只是函数参数名字，可以改名。
+
+当前普通工具 render 参数的五个外层字段
+name：工具名称。
+toolCallId：本次调用编号。
+args：本次实际工具参数。
+status：工具执行阶段，由 CopilotKit 管理。
+result：handler 返回结果。
+
+执行中结构示例
+{
+  name: 'filter_orders',
+  toolCallId: 'call_001',
+  args: { status: '待付款' },
+  status: 'executing',
+  result: undefined,
+}
+
+完成后结构示例
+{
+  name: 'filter_orders',
+  toolCallId: 'call_001',
+  args: { status: '待付款' },
+  status: 'complete',
+  result: '{"applied":true,"status":"待付款","count":1}',
+}
+
+编号和数量为示例值。
+固定的是当前 SDK 的外层字段约定，值随着调用和阶段变化。
+执行中 result 是 undefined，不是 null。
+args.status 是订单状态；外层 status 是工具执行阶段，二者不能混淆。
+当前阶段值对应 inProgress、executing、complete，优先使用 ToolCallStatus 枚举。
+
+============================================================
+第 13 课：泛型与显式类型说明
+============================================================
+
+讨论代码
+props: VueToolCallRendererRenderProps<{ status: OrderFilter }>
+
+拆解
+props：接收工具信息的参数名。
+冒号后面：给 TypeScript 的类型说明。
+VueToolCallRendererRenderProps：CopilotKit 的普通工具显示信息类型。
+<{ status: OrderFilter }>：补充本工具的 args 格式。
+OrderFilter：'全部' | '待付款' | '待发货' | '已完成'，竖线表示可选类型。
+
+为什么约束 args.status？
+因为 SDK 定义类型时，将传入的类型放在 args 上。
+教学简化示意：
+
+type ToolInfo<T> = {
+  args: T
+}
+
+ToolInfo<{ status: OrderFilter }> 就得到 args: { status: OrderFilter }。
+尖括号是填入类型，不是传入实际对象。
+这叫 TypeScript 泛型：定义时保留类型位置，使用时填入具体类型。
+
+parameters、args、类型的区别
+parameters：运行时存在的规则对象，向模型描述工具参数。
+args：本次真正传入的数据。
+TypeScript 类型：检查开发代码和提供编辑器提示，不校验实际运行时数据。
+类型声明生成 JavaScript 时被去掉，不会创建、过滤或改变 props。
+
+不写类型会怎样？
+render: (props) => h(OrderQueryResult, props)
+
+实际 props 不会变化。
+理想情况下可从上下文自动推导，无需重复写类型。
+当前项目实际尝试后报 props 隐式 any；因此保留显式类型。
+当前 build 包含 vue-tsc 检查，这种类型错误也会阻止构建通过。
+若配置允许隐式 any，这一处可能可省略，不会仅因省略类型就在运行时报错。
+不能把当前项目的推导限制推广为所有版本都必须这样写。
+
+两种类型的区别
+VueToolCallRendererRenderProps：普通工具展示信息。
+VueHumanInTheLoopRenderProps：等待用户选择的工具信息，执行等待阶段额外有 respond。
+
+掌握标准
+理解数据从哪来、传给谁、做什么；不要求背诵长类型名称。
+
+============================================================
+高频易混淆点速查
+============================================================
+
+1. 角色与能力
+prompt 定身份；工具和业务代码提供动作；实际结果证明是否成功。
+
+2. 规则与参数
+parameters 是规则对象，args 是实际参数，不是同一份值。
+
+3. 两个 status
+args.status 是订单状态，props.status 是工具执行阶段。
+
+4. 类型与校验
+TypeScript 检查代码；Zod parse 检查实际数据；JSON.parse 解析字符串。
+
+5. 展示与执行
+render 显示组件；handler 执行业务；h 创建组件描述。
+
+6. 确认与删除
+respond 回传结果、结束等待；deleteOrder 才执行删除。
+
+7. 数据共享与自动读取
+useAgentContext 提供指定数据；包裹页面不代表 AI 能自动读取所有内容。
+
+8. 类型省略与运行数据
+省略类型不改变 props 值，但当前严格检查会提示隐式 any。
+
+============================================================
+实际接入与运行清单
+============================================================
+
+[ ] 确认有可用 CopilotKit 后端及模型连接。
+[ ] 安装 Vue SDK，需要 Zod 时安装 zod。
+[ ] main.ts 引入 SDK 样式。
+[ ] 配置 CopilotKitProvider 和 runtime-url。
+[ ] 内部组件显示 CopilotChat，先验证普通聊天。
+[ ] useAgentContext 提供所需页面数据。
+[ ] useFrontendTool 连接已有业务函数。
+[ ] useHumanInTheLoop 连接确认交互。
+[ ] 需要自定义结果时再配置 render。
+[ ] 分别验证实际操作、取消、错误反馈和数据显示。
+
+本项目运行
+项目目录：/Users/joker/Documents/ChatGPT/CopilotKit
+前端终端：pnpm dev --host 127.0.0.1
+后端终端：pnpm dev:server
+页面：http://127.0.0.1:5173/
+后端信息：http://127.0.0.1:8200/api/copilotkit/info
+
+两个终端保持运行，停止按 Ctrl+C。
+无法访问先确认服务进程、实际端口和监听地址。
+localhost 可能解析为 ::1，而 127.0.0.1 是 IPv4，访问地址需匹配。
+HTTP 200 不等于浏览器显示和 AI 对话都验证通过。
+
+Git 核心
+add 准备提交，commit 保存本地记录，push 上传远程。
+网络失败不需要重复 commit，不应直接强推覆盖远程。
+.env.local、node_modules、dist 不提交；.env.example 保持空 Key。
+
+============================================================
+学习进度与后续教学原则
+============================================================
+
+已经实践：聊天接入、工具调用、页面状态共享、删除前确认、接口查询、工具结果组件。
+需要区分验证范围：早期本地工具和确认流程做过浏览器验证；接口化和结果组件相关轮次只完成了部分验证，浏览器工具超时不能当作已完成端到端测试。
+后续可继续学：多个工具如何选择、按页面和权限提供工具、失败和取消、页面切换后的登记与清理。
+完成入门 Demo 不等于学完全部 CopilotKit。
+
+教学要求
+- 每课只解决一个有实际价值的问题，不为了扩充页面而新增功能。
+- 明确官网写法、项目业务代码和版本适配的边界。
+- 安装、导入、文件移动和实际改动要交代清楚。
+- 优先简洁代码，语法在解释中展开，不反复更换项目风格。
+- 先讲运行过程和数据流，再讲必要的类型细节。
+- 不突然使用简称；不引入当前代码里不存在的字段。
+- 记录疑问应总结为技术易混淆点，不记录无关操作对话。
+
+官方参考
+Vue 入门：https://docs.copilotkit.ai/vue
+Vue API：https://docs.copilotkit.ai/reference/vue
+工具：https://docs.copilotkit.ai/reference/vue/hooks/useFrontendTool
+页面数据：https://docs.copilotkit.ai/reference/vue/hooks/useAgentContext
+用户确认：https://docs.copilotkit.ai/vue/human-in-the-loop
+Vue h()：https://cn.vuejs.org/api/render-function#h
