@@ -58,15 +58,17 @@ onMounted(async () => {
 
 // --------------------------- 页面状态共享 ---------------------------
 
-// 向 AI 提供最新的筛选条件和显示条数。
+// 向 AI 提供当前页面状态和可见的订单数据。
 useAgentContext({
-  description: '订单页面当前状态：status 是筛选条件，count 是显示条数，loading 表示是否正在查询，canQuery 表示是否允许 AI 使用订单查询工具。用户询问当前状态时，直接据此回答，不要调用筛选工具改变页面。',
+  description: '订单页面当前状态：status 是筛选条件，count 是显示条数，loading 表示是否正在查询，canQuery 表示是否允许 AI 使用订单查询工具。visibleOrders 是页面当前显示的订单，id 为订单号、customer 为客户、amount 为金额、status 为订单状态；这不是所有订单。用户询问当前页面的信息时，直接据此回答，不要调用筛选工具改变页面；查询中不要把列表当作新条件的查询结果，列表外的订单信息不要编造。',
   value: () => ({
     status: currentStatus.value,
     count: orders.value.length,
     // 告诉 AI 订单列表是否正在查询：true 查询中，false 当前没有查询。
     loading: loading.value,
     canQuery: canQuery.value,
+    // 只提供当前列表中的订单，让 AI 能回答订单号、客户和金额等问题。
+    visibleOrders: orders.value,
   }),
 })
 
