@@ -24,6 +24,7 @@ const calculation = computed(() => props.result ? JSON.parse(props.result) : und
         <p>筛选状态：{{ calculation.status }}</p>
         <p>总金额：{{ calculation.total }} 元</p>
         <p>参与计算：{{ calculation.count }} 条订单</p>
+        <p v-if="typeof calculation.average === 'number'">平均每单：{{ calculation.average.toFixed(2) }} 元</p>
       </template>
       <p v-else>本次计算未返回有效金额，请重试。</p>
     </template>

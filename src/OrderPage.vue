@@ -114,14 +114,17 @@ useFrontendTool({
 // 在同一个工具内等待查询完成，再计算新列表的金额。
 useFrontendTool({
   name: 'query_order_total',
-  description: '用户要求查询某种状态的订单总金额时使用。此工具内部会先按状态查询并更新页面，再计算查询结果，不需要先调用筛选工具。用户要求计算当前列表时，使用页面当前的筛选状态。',
+  description: '用户要求查询某种状态的订单总金额或平均每单金额时使用。此工具内部会先按状态查询并更新页面，再计算总金额、条数和平均金额，不需要先调用筛选工具。用户要求计算当前列表时，使用页面当前的筛选状态。',
   parameters: z.object({
     status: z.enum(['全部', '待付款', '待发货', '已完成']),
   }),
   handler: async ({ status }) => {
     await filterOrders(status)
     const total = orders.value.reduce((sum, order) => sum + order.amount, 0)
-    return { status, total, count: orders.value.length }
+    const count = orders.value.length
+    // 没有订单时平均金额为 0，避免除以零。
+    const average = count === 0 ? 0 : total / count
+    return { status, total, count, average }
   },
   get available() {
     return canQuery.value
