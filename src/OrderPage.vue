@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, h } from 'vue'
-import { CopilotChat, useFrontendTool, useAgentContext, useHumanInTheLoop } from '@copilotkit/vue/v2'
+import { CopilotChat, useFrontendTool, useAgentContext, useHumanInTheLoop, useConfigureSuggestions } from '@copilotkit/vue/v2'
 import type { VueHumanInTheLoopRenderProps, VueToolCallRendererRenderProps } from '@copilotkit/vue/v2'
 import { z } from 'zod'
 import DeleteOrderConfirmation from './DeleteOrderConfirmation.vue'
@@ -20,6 +20,9 @@ interface Order {
 const orders = ref<Order[]>([])
 const loading = ref(false)
 const queryError = ref('')
+
+// 保存聊天组件报告的错误提示，重新发送消息时清空。
+const chatError = ref('')
 
 // --------------------------- 模拟工具权限 ---------------------------
 
@@ -73,6 +76,17 @@ useAgentContext({
 })
 
 // --------------------------- AI 订单筛选 ---------------------------
+
+// 持续显示快捷提问，点击后由聊天框发送对应消息。
+useConfigureSuggestions({
+  // 明确指定聊天框使用的助手，让首次连接前也能加载固定快捷提问。
+  consumerAgentId: 'default',
+  suggestions: [
+    { title: '查看待发货订单', message: '帮我只看待发货订单。' },
+    { title: '介绍当前列表', message: '当前页面有哪些订单？请列出订单号、客户和金额，不要重新查询。' },
+  ],
+  available: 'always',
+})
 
 // 将订单筛选函数提供给 AI。
 useFrontendTool({
@@ -160,8 +174,13 @@ useHumanInTheLoop({
       允许 AI 调用订单查询工具
     </label>
     <p>AI 查询工具：{{ canQuery ? '可用' : '不可用，手动筛选仍可使用' }}</p>
+    <p v-if="chatError" role="alert">{{ chatError }}</p>
     <div class="chat-panel">
-      <CopilotChat />
+      <CopilotChat
+        :on-error="() => { chatError = 'AI 聊天出现错误，请检查网络或服务配置后重试。' }"
+        @submit-message="chatError = ''"
+        @select-suggestion="chatError = ''"
+      />
     </div>
   </main>
 </template>
