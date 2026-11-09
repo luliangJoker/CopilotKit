@@ -24,6 +24,9 @@ const queryError = ref('')
 // 保存聊天组件报告的错误提示，重新发送消息时清空。
 const chatError = ref('')
 
+// 记录用户点击了停止按钮，不代表已经撤销订单操作。
+const chatStopRequested = ref(false)
+
 // --------------------------- 模拟工具权限 ---------------------------
 
 // 演示 AI 工具开关，手动查询按钮仍可使用。
@@ -175,11 +178,13 @@ useHumanInTheLoop({
     </label>
     <p>AI 查询工具：{{ canQuery ? '可用' : '不可用，手动筛选仍可使用' }}</p>
     <p v-if="chatError" role="alert">{{ chatError }}</p>
+    <p v-if="chatStopRequested" role="status">已请求停止本次回答；已执行的订单操作不会撤销。</p>
     <div class="chat-panel">
       <CopilotChat
         :on-error="() => { chatError = 'AI 聊天出现错误，请检查网络或服务配置后重试。' }"
-        @submit-message="chatError = ''"
-        @select-suggestion="chatError = ''"
+        @submit-message="chatError = ''; chatStopRequested = false"
+        @select-suggestion="chatError = ''; chatStopRequested = false"
+        @stop="chatStopRequested = true"
       />
     </div>
   </main>
