@@ -5,6 +5,7 @@ import type { VueHumanInTheLoopRenderProps, VueToolCallRendererRenderProps } fro
 import { z } from 'zod'
 import DeleteOrderConfirmation from './DeleteOrderConfirmation.vue'
 import OrderQueryResult from './OrderQueryResult.vue'
+import OrderTotalResult from './OrderTotalResult.vue'
 
 type OrderStatus = '待付款' | '待发货' | '已完成'
 type OrderFilter = '全部' | OrderStatus
@@ -106,6 +107,27 @@ useFrontendTool({
   },
   render: (props: VueToolCallRendererRenderProps<{ status: OrderFilter }>) =>
     h(OrderQueryResult, props),
+})
+
+// --------------------------- 查询并计算订单金额 ---------------------------
+
+// 在同一个工具内等待查询完成，再计算新列表的金额。
+useFrontendTool({
+  name: 'query_order_total',
+  description: '用户要求查询某种状态的订单总金额时使用。此工具内部会先按状态查询并更新页面，再计算查询结果，不需要先调用筛选工具。用户要求计算当前列表时，使用页面当前的筛选状态。',
+  parameters: z.object({
+    status: z.enum(['全部', '待付款', '待发货', '已完成']),
+  }),
+  handler: async ({ status }) => {
+    await filterOrders(status)
+    const total = orders.value.reduce((sum, order) => sum + order.amount, 0)
+    return { status, total, count: orders.value.length }
+  },
+  get available() {
+    return canQuery.value
+  },
+  render: (props: VueToolCallRendererRenderProps<{ status: OrderFilter }>) =>
+    h(OrderTotalResult, props),
 })
 
 // --------------------------- 删除订单确认 ---------------------------
