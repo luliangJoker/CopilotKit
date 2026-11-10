@@ -46,6 +46,14 @@ createServer((request, response) => {
     response.end(JSON.stringify(status === '全部' ? orders : orders.filter((order) => order.status === status)))
     return
   }
+  // 按编号查询单笔订单，不受前端当前筛选条件影响。
+  if (url.pathname.startsWith('/api/orders/') && request.method === 'GET') {
+    const orderId = decodeURIComponent(url.pathname.slice('/api/orders/'.length))
+    const order = orders.find((order) => order.id === orderId)
+    response.writeHead(order ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' })
+    response.end(JSON.stringify(order ?? { code: 'ORDER_NOT_FOUND', orderId, message: '订单不存在' }))
+    return
+  }
   if (url.pathname.startsWith('/api/orders/') && request.method === 'DELETE') {
     const index = orders.findIndex((order) => order.id === decodeURIComponent(url.pathname.slice('/api/orders/'.length)))
     const deleted = index !== -1

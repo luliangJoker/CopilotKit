@@ -58,6 +58,29 @@ async function analyzeOrder(order: Order) {
 // 演示 AI 工具开关，手动查询按钮仍可使用。
 const canQuery = ref(true)
 
+// 直接调用工具时单独记录忙碌状态，防止按钮重复触发。
+const directToolRunning = ref(false)
+
+async function runPendingOrderTotal() {
+  if (!canQuery.value || loading.value || directToolRunning.value || !agent.value || agent.value.isRunning) return
+  directToolRunning.value = true
+  chatError.value = ''
+  chatStopRequested.value = false
+  try {
+    const { error } = await copilotkit.value.runTool({
+      name: 'query_order_total',
+      agentId: 'default',
+      parameters: { status: '待发货' },
+      followUp: false,
+    })
+    if (error) chatError.value = '统计工具执行失败，请检查业务接口后重试。'
+  } catch {
+    chatError.value = '未能执行统计工具，请检查工具注册和助手连接。'
+  } finally {
+    directToolRunning.value = false
+  }
+}
+
 // 筛选状态：只保存用户当前选择的条件。
 const filterOptions: OrderFilter[] = ['全部', '待付款', '待发货', '已完成']
 const currentStatus = ref<OrderFilter>('全部')
@@ -132,6 +155,31 @@ useFrontendTool({
   },
   render: (props: VueToolCallRendererRenderProps<{ status: OrderFilter }>) =>
     h(OrderQueryResult, props),
+})
+
+// --------------------------- 按编号查询订单 ---------------------------
+
+// 按需从业务接口取单笔订单，只返回给 AI，不改动表格和筛选状态。
+useFrontendTool({
+  name: 'get_order_by_id',
+  description: '按明确的订单号查询单笔订单，尤其用于订单不在当前页面列表中时。不会改变页面筛选条件。没有订单号时先询问用户；必须根据接口结果回答，不把当前列表未显示当作订单不存在。',
+  parameters: z.object({
+    orderId: z.string().describe('用户要查询的订单号，例如 ORD001'),
+  }),
+  handler: async ({ orderId }) => {
+    const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}`)
+    if (response.status === 404) {
+      const error = await response.json()
+      if (error.code === 'ORDER_NOT_FOUND') return { found: false, orderId }
+      throw new Error('订单详情接口不可用，请检查接口地址或重启后端')
+    }
+    if (!response.ok) throw new Error(`订单详情查询失败：HTTP ${response.status}`)
+    const order: Order = await response.json()
+    return { found: true, order }
+  },
+  get available() {
+    return canQuery.value
+  },
 })
 
 // --------------------------- 查询并计算订单金额 ---------------------------
@@ -228,6 +276,12 @@ useHumanInTheLoop({
     </section>
 
     <h2>AI 聊天</h2>
+    <button
+      :disabled="!canQuery || loading || directToolRunning || !agent || agent.isRunning"
+      @click="runPendingOrderTotal"
+    >
+      {{ directToolRunning ? '统计中……' : '直接执行工具：统计待发货金额' }}
+    </button>
     <!-- 对照观察：业务查询状态由页面管理，AI 运行状态由 SDK 提供。 -->
     <p>订单接口：{{ loading ? '查询中' : '当前没有查询' }}</p>
     <p v-if="agent" role="status">AI：{{ agent.isRunning ? '运行中' : '空闲' }}</p>
