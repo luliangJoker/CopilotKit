@@ -62,7 +62,8 @@ const canQuery = ref(true)
 const directToolRunning = ref(false)
 
 async function runPendingOrderTotal() {
-  if (!canQuery.value || loading.value || directToolRunning.value || !agent.value || agent.value.isRunning) return
+  const currentAgent = agent.value
+  if (!canQuery.value || loading.value || directToolRunning.value || !currentAgent || currentAgent.isRunning) return
   directToolRunning.value = true
   chatError.value = ''
   chatStopRequested.value = false
