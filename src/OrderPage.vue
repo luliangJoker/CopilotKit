@@ -231,6 +231,11 @@ useHumanInTheLoop({
     <!-- 对照观察：业务查询状态由页面管理，AI 运行状态由 SDK 提供。 -->
     <p>订单接口：{{ loading ? '查询中' : '当前没有查询' }}</p>
     <p v-if="agent" role="status">AI：{{ agent.isRunning ? '运行中' : '空闲' }}</p>
+    <!-- 课程观察区：查看当前助手实际保存的消息，默认收起。 -->
+    <details v-if="agent" class="message-inspector">
+      <summary>查看消息数据（{{ agent.messages.length }} 条）</summary>
+      <pre>{{ JSON.stringify(agent.messages, null, 2) }}</pre>
+    </details>
     <label>
       <input v-model="canQuery" type="checkbox">
       允许 AI 调用订单查询工具
@@ -264,6 +269,13 @@ main {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   overflow: hidden;
+}
+
+.message-inspector pre {
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .filters {
