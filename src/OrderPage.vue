@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, h } from 'vue'
-import { CopilotChat, useFrontendTool, useAgentContext, useHumanInTheLoop, useConfigureSuggestions } from '@copilotkit/vue/v2'
+import { CopilotChat, useFrontendTool, useAgentContext, useHumanInTheLoop, useConfigureSuggestions, useAgent, useCopilotKit } from '@copilotkit/vue/v2'
 import type { VueHumanInTheLoopRenderProps, VueToolCallRendererRenderProps } from '@copilotkit/vue/v2'
 import { z } from 'zod'
 import DeleteOrderConfirmation from './DeleteOrderConfirmation.vue'
@@ -27,6 +27,31 @@ const chatError = ref('')
 
 // 记录用户点击了停止按钮，不代表已经撤销订单操作。
 const chatStopRequested = ref(false)
+
+// --------------------------- 业务按钮发起聊天 ---------------------------
+
+// 与页面中的聊天框使用同一个 default 助手。
+const { agent } = useAgent({ agentId: 'default' })
+const { copilotkit } = useCopilotKit()
+
+async function analyzeOrder(order: Order) {
+  const currentAgent = agent.value
+  if (!currentAgent || currentAgent.isRunning) return
+  chatError.value = ''
+  chatStopRequested.value = false
+
+  // 添加所选订单的用户消息，再发起 AI 回答。
+  currentAgent.addMessage({
+    id: crypto.randomUUID(),
+    role: 'user',
+    content: `请根据这笔订单的数据，用简洁中文说明当前情况和下一步处理建议。仅作分析，不要查询、筛选或删除订单，不要编造物流、付款时间等未知信息。订单数据：${JSON.stringify(order)}`,
+  })
+  try {
+    await copilotkit.value.runAgent({ agent: currentAgent })
+  } catch {
+    chatError.value = '订单分析请求失败，请检查网络或服务配置后重试。'
+  }
+}
 
 // --------------------------- 模拟工具权限 ---------------------------
 
@@ -183,6 +208,7 @@ useHumanInTheLoop({
             <th scope="col">客户</th>
             <th scope="col">金额</th>
             <th scope="col">状态</th>
+            <th scope="col">操作</th>
           </tr>
         </thead>
         <tbody>
@@ -191,6 +217,11 @@ useHumanInTheLoop({
             <td>{{ order.customer }}</td>
             <td>¥{{ order.amount }}</td>
             <td>{{ order.status }}</td>
+            <td>
+              <button :disabled="loading || !agent || agent.isRunning" @click="analyzeOrder(order)">
+                让 AI 分析
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
