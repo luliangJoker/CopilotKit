@@ -228,6 +228,9 @@ useHumanInTheLoop({
     </section>
 
     <h2>AI 聊天</h2>
+    <!-- 对照观察：业务查询状态由页面管理，AI 运行状态由 SDK 提供。 -->
+    <p>订单接口：{{ loading ? '查询中' : '当前没有查询' }}</p>
+    <p v-if="agent" role="status">AI：{{ agent.isRunning ? '运行中' : '空闲' }}</p>
     <label>
       <input v-model="canQuery" type="checkbox">
       允许 AI 调用订单查询工具
